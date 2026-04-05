@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Inventory</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-wrap">
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger"><span></span><span></span><span></span></button>
+      <span class="tb-title">Inventory</span>
+      <div class="tb-actions">
+        <div class="tb-btn" title="Low stock">🔔<span class="n-dot" id="notif-dot" style="display:none"></span></div>
+        <div class="avatar" id="user-av">A</div>
+      </div>
+    </header>
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Inventory</h1>
+          <p class="page-sub" id="inv-sub">Loading products…</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddProduct()">＋ Add Product</button>
+      </div>
+
+      <!-- Mini Stats -->
+      <div class="stats-grid stagger" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:18px" id="inv-stats">
+        <div class="stat co"><div class="s-icon io">📦</div><div><div class="s-label">Total Products</div><div class="s-val" id="s-total">—</div></div></div>
+        <div class="stat cr"><div class="s-icon ir">⚠️</div><div><div class="s-label">Low Stock</div><div class="s-val" id="s-low">—</div></div></div>
+        <div class="stat ct"><div class="s-icon it">💰</div><div><div class="s-label">Inventory Value</div><div class="s-val" id="s-val">—</div></div></div>
+        <div class="stat cp"><div class="s-icon ip">🏷️</div><div><div class="s-label">Categories</div><div class="s-val" id="s-cats">—</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Products</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="sw-wrap"><span class="si">🔍</span><input type="text" class="fc" id="search-inp" placeholder="Search products…" oninput="filterTable()"></div>
+            <select class="fc" id="cat-filter" style="max-width:160px" onchange="filterTable()">
+              <option value="">All Categories</option>
+            </select>
+            <select class="fc" id="stock-filter" style="max-width:150px" onchange="filterTable()">
+              <option value="">All Stock</option>
+              <option value="low">Low Stock</option>
+              <option value="out">Out of Stock</option>
+            </select>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>SKU</th><th>Product Name</th><th>Category</th><th>Stock</th><th>Cost Price</th><th>Selling Price</th><th>Margin</th><th>Actions</th></tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+        <div id="inv-pagination" style="padding:12px 16px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:.82rem;color:var(--t2)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD / EDIT PRODUCT MODAL -->
+<div class="modal-ov" id="product-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="pm-title">Add Product</span>
+      <button class="mc" onclick="Modal.close('product-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pm-id">
+      <div class="fr">
+        <div class="fg"><label class="fl">Product Name *</label><input type="text" class="fc" id="pm-name" placeholder="e.g. Basmati Rice 5kg" required></div>
+        <div class="fg"><label class="fl">SKU / Code</label><input type="text" class="fc" id="pm-sku" placeholder="e.g. GR-001"></div>
+      </div>
+      <div class="fr">
+        <div class="fg">
+          <label class="fl">Category *</label>
+          <select class="fc" id="pm-cat">
+            <option>Groceries</option><option>Dairy</option><option>Personal Care</option>
+            <option>Household</option><option>Snacks</option><option>Instant Food</option>
+            <option>Beverages</option><option>Electronics</option><option>Clothing</option><option>Other</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Stock Quantity</label><input type="number" class="fc" id="pm-stock" min="0" value="0" placeholder="0"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Cost Price (₹) *</label><input type="number" class="fc" id="pm-cost" min="0" step="0.01" placeholder="0.00" required></div>
+        <div class="fg"><label class="fl">Selling Price (₹) *</label><input type="number" class="fc" id="pm-sell" min="0" step="0.01" placeholder="0.00" required></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Low Stock Alert (units)</label><input type="number" class="fc" id="pm-thr" min="1" value="10" placeholder="10"></div>
+        <div class="fg" id="margin-preview" style="display:flex;align-items:flex-end;padding-bottom:2px">
+          <div style="background:var(--bg-secondary);border:1px solid var(--b1);border-radius:var(--rm);padding:8px 12px;width:100%;font-size:.82rem;color:var(--t2)">
+            Margin: <strong id="margin-val" class="ta">—</strong>
+          </div>
+        </div>
+      </div>
+      <div class="fg"><label class="fl">Description</label><textarea class="fc" id="pm-desc" rows="2" placeholder="Optional product description"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="Modal.close('product-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProduct()" id="pm-save">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let allProducts = [], page = 1, perPage = 15;
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadProducts();
+  // Auto-calculate margin
+  ['pm-cost','pm-sell'].forEach(id => document.getElementById(id).addEventListener('input', updateMarginPreview));
+  // URL search param
+  const sp = new URLSearchParams(window.location.search);
+  if (sp.get('search')) { document.getElementById('search-inp').value = sp.get('search'); }
+});
+
+async function loadProducts() {
+  const tbody = document.getElementById('inv-tbody');
+  loadingRow(tbody, 8);
+  try {
+    const r = await API.get('/api/products/');
+    allProducts = r.data;
+    updateStats(allProducts);
+    await loadCategories();
+    filterTable();
+  } catch(err) {
+    allProducts = getDemoProducts();
+    updateStats(allProducts);
+    populateCatFilter([...new Set(allProducts.map(p=>p.category))]);
+    filterTable();
+    Toast.info('Demo Mode','Showing sample inventory data.');
+  }
+}
+
+function updateStats(prods) {
+  const low = prods.filter(p=>p.stock_quantity<=p.low_stock_threshold).length;
+  const val = prods.reduce((s,p)=>s+p.stock_quantity*p.selling_price,0);
+  const cats = new Set(prods.map(p=>p.category)).size;
+  document.getElementById('s-total').textContent = prods.length;
+  document.getElementById('s-low').textContent   = low;
+  document.getElementById('s-val').textContent   = Fmt.cur(val);
+  document.getElementById('s-cats').textContent  = cats;
+  document.getElementById('inv-sub').textContent = `${prods.length} products, ₹${Fmt.num(val)} inventory value`;
+  if (low>0) document.getElementById('notif-dot').style.display='block';
+}
+
+async function loadCategories() {
+  try {
+    const r = await API.get('/api/products/categories');
+    populateCatFilter(r.data);
+  } catch { populateCatFilter([...new Set(allProducts.map(p=>p.category))]); }
+}
+
+function populateCatFilter(cats) {
+  const sel = document.getElementById('cat-filter');
+  cats.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+}
+
+function filterTable() {
+  const q     = document.getElementById('search-inp').value;
+  const cat   = document.getElementById('cat-filter').value;
+  const stock = document.getElementById('stock-filter').value;
+  let filtered = localSearch(allProducts,['name','sku','category'],q);
+  if (cat)   filtered = filtered.filter(p=>p.category===cat);
+  if (stock==='low') filtered = filtered.filter(p=>p.stock_quantity>0&&p.stock_quantity<=p.low_stock_threshold);
+  if (stock==='out') filtered = filtered.filter(p=>p.stock_quantity===0);
+  page = 1;
+  renderTable(filtered);
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('inv-tbody');
+  if (!data.length) { emptyRow(tbody,8,'No products found'); updatePager(0); return; }
+  const start = (page-1)*perPage, slice = data.slice(start,start+perPage);
+  tbody.innerHTML = slice.map(p => {
+    const margin = p.selling_price>0 ? ((p.selling_price-p.cost_price)/p.selling_price*100).toFixed(1) : 0;
+    return `<tr>
+      <td><span class="badge bm">${p.sku||'—'}</span></td>
+      <td><div style="font-weight:600;font-size:.875rem">${p.name}</div>${p.description?`<div style="font-size:.72rem;color:var(--t3);margin-top:2px">${p.description.substring(0,40)}…</div>`:''}</td>
+      <td><span class="badge bt">${p.category}</span></td>
+      <td>${stockBadge(p.stock_quantity,p.low_stock_threshold)}</td>
+      <td class="f6">${Fmt.cur(p.cost_price)}</td>
+      <td class="f6 ta">${Fmt.cur(p.selling_price)}</td>
+      <td><span class="badge ${margin>=20?'bs':margin>=10?'bw':'bd'}">${margin}%</span></td>
+      <td>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-secondary btn-icon btn-sm" onclick="editProduct('${p.id}')" title="Edit">✏️</button>
+          <button class="btn btn-danger btn-icon btn-sm" onclick="deleteProduct('${p.id}','${p.name}')" title="Delete">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  updatePager(data.length, data);
+}
+
+function updatePager(total, data=[]) {
+  const pages = Math.ceil(total/perPage);
+  const pg = document.getElementById('inv-pagination');
+  if (total===0) { pg.innerHTML=''; return; }
+  pg.innerHTML = `
+    <span>${(page-1)*perPage+1}–${Math.min(page*perPage,total)} of ${total} products</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-secondary btn-sm" onclick="changePage(-1)" ${page<=1?'disabled':''}>← Prev</button>
+      <span style="padding:5px 10px;background:var(--bg-secondary);border-radius:var(--rm);font-size:.8rem">${page}/${pages}</span>
+      <button class="btn btn-secondary btn-sm" onclick="changePage(1)" ${page>=pages?'disabled':''}>Next →</button>
+    </div>`;
+}
+
+function changePage(delta) {
+  page += delta;
+  filterTable();
+}
+
+function openAddProduct() {
+  document.getElementById('pm-id').value='';
+  document.getElementById('pm-title').textContent='Add Product';
+  document.getElementById('pm-save').textContent='Add Product';
+  ['pm-name','pm-sku','pm-desc'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pm-stock').value='0';
+  document.getElementById('pm-cost').value='';
+  document.getElementById('pm-sell').value='';
+  document.getElementById('pm-thr').value='10';
+  document.getElementById('pm-cat').value='Groceries';
+  document.getElementById('margin-val').textContent='—';
+  Modal.open('product-modal');
+}
+
+async function editProduct(id) {
+  const p = allProducts.find(x=>x.id===id);
+  if (!p) return;
+  document.getElementById('pm-id').value=p.id;
+  document.getElementById('pm-title').textContent='Edit Product';
+  document.getElementById('pm-save').textContent='Update Product';
+  document.getElementById('pm-name').value=p.name;
+  document.getElementById('pm-sku').value=p.sku||'';
+  document.getElementById('pm-cat').value=p.category;
+  document.getElementById('pm-stock').value=p.stock_quantity;
+  document.getElementById('pm-cost').value=p.cost_price;
+  document.getElementById('pm-sell').value=p.selling_price;
+  document.getElementById('pm-thr').value=p.low_stock_threshold;
+  document.getElementById('pm-desc').value=p.description||'';
+  updateMarginPreview();
+  Modal.open('product-modal');
+}
+
+async function saveProduct() {
+  const id   = document.getElementById('pm-id').value;
+  const name = document.getElementById('pm-name').value.trim();
+  const cost = parseFloat(document.getElementById('pm-cost').value);
+  const sell = parseFloat(document.getElementById('pm-sell').value);
+  if (!name || isNaN(cost) || isNaN(sell)) { Toast.error('Validation Error','Name, cost price and selling price are required.'); return; }
+  const body = {
+    name, category:document.getElementById('pm-cat').value,
+    sku:document.getElementById('pm-sku').value||null,
+    stock_quantity:parseInt(document.getElementById('pm-stock').value)||0,
+    cost_price:cost, selling_price:sell,
+    low_stock_threshold:parseInt(document.getElementById('pm-thr').value)||10,
+    description:document.getElementById('pm-desc').value||null
+  };
+  const btn = document.getElementById('pm-save');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+  try {
+    if (id) await API.put(`/api/products/${id}`, body);
+    else    await API.post('/api/products/', body);
+    Toast.success('Success!', id?'Product updated.':'Product added to inventory.');
+    Modal.close('product-modal');
+    loadProducts();
+  } catch(err) {
+    Toast.error('Save Failed', err.message);
+  } finally {
+    btn.disabled=false; btn.textContent=id?'Update Product':'Add Product';
+  }
+}
+
+function deleteProduct(id, name) {
+  confirmDel(`Delete "${name}"? This action cannot be undone.`, async () => {
+    try {
+      await API.del(`/api/products/${id}`);
+      Toast.success('Deleted', `"${name}" removed from inventory.`);
+      loadProducts();
+    } catch(err) { Toast.error('Delete Failed', err.message); }
+  });
+}
+
+function updateMarginPreview() {
+  const cost = parseFloat(document.getElementById('pm-cost').value)||0;
+  const sell = parseFloat(document.getElementById('pm-sell').value)||0;
+  const mv = document.getElementById('margin-val');
+  if (sell>0) {
+    const m = ((sell-cost)/sell*100).toFixed(1);
+    mv.textContent = m+'%';
+    mv.style.color = m>=20?'var(--success)':m>=10?'var(--warn)':'var(--danger)';
+  } else { mv.textContent='—'; mv.style.color=''; }
+}
+
+function getDemoProducts() {
+  return [
+    {id:'1',name:'Basmati Rice 5kg',category:'Groceries',sku:'GR-001',stock_quantity:150,cost_price:220,selling_price:299,low_stock_threshold:20,description:'Premium long grain basmati'},
+    {id:'2',name:'Tata Salt 1kg',category:'Groceries',sku:'GR-002',stock_quantity:200,cost_price:18,selling_price:25,low_stock_threshold:30},
+    {id:'3',name:'Amul Butter 500g',category:'Dairy',sku:'DA-001',stock_quantity:9,cost_price:240,selling_price:285,low_stock_threshold:15},
+    {id:'4',name:'Colgate Toothpaste',category:'Personal Care',sku:'PC-001',stock_quantity:8,cost_price:55,selling_price:79,low_stock_threshold:10},
+    {id:'5',name:'Surf Excel 1kg',category:'Household',sku:'HH-001',stock_quantity:60,cost_price:145,selling_price:185,low_stock_threshold:15},
+    {id:'6',name:'Maggi Noodles 70g',category:'Instant Food',sku:'IF-001',stock_quantity:120,cost_price:12,selling_price:18,low_stock_threshold:25},
+    {id:'7',name:'Dettol Soap 125g',category:'Personal Care',sku:'PC-002',stock_quantity:5,cost_price:38,selling_price:55,low_stock_threshold:10},
+    {id:'8',name:'Parle-G Biscuits',category:'Snacks',sku:'SN-001',stock_quantity:200,cost_price:8,selling_price:12,low_stock_threshold:50},
+    {id:'9',name:'Haldiram Mixture',category:'Snacks',sku:'SN-002',stock_quantity:30,cost_price:60,selling_price:85,low_stock_threshold:10},
+    {id:'10',name:'Aashirvaad Flour 5kg',category:'Groceries',sku:'GR-003',stock_quantity:80,cost_price:195,selling_price:240,low_stock_threshold:15}
+  ];
+}
+</script>
+</body></html>

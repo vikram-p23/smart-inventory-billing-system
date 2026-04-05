@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Billing</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-wrap">
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger"><span></span><span></span><span></span></button>
+      <span class="tb-title">Billing / POS</span>
+      <div class="tb-actions">
+        <a href="reports.html" class="tb-btn" title="Sales history">📋</a>
+        <div class="avatar" id="user-av">A</div>
+      </div>
+    </header>
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Point of Sale</h1>
+          <p class="page-sub">Select products and process a sale</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="clearCart()">🗑️ Clear Cart</button>
+          <a href="reports.html" class="btn btn-secondary">📋 Sales History</a>
+        </div>
+      </div>
+
+      <div class="billing-layout">
+        <!-- LEFT: Product Picker -->
+        <div>
+          <div class="toolbar">
+            <div class="tl">
+              <div class="sw-wrap f1"><span class="si">🔍</span><input type="text" class="fc" id="prod-search" placeholder="Search products to add…" oninput="filterProducts()"></div>
+              <select class="fc" id="cat-fil" style="max-width:150px" onchange="filterProducts()">
+                <option value="">All Categories</option>
+              </select>
+            </div>
+          </div>
+          <div id="prod-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:10px"></div>
+          <div id="prod-empty" class="empty hidden">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-title">No products found</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Cart Panel -->
+        <div class="cart-panel">
+          <div class="cart-head">
+            <div>
+              <div style="font-family:var(--fh);font-weight:700;font-size:.92rem">🛒 Cart</div>
+              <div style="font-size:.72rem;color:var(--t3)" id="cart-count">0 items</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input type="text" class="fc" id="cust-name" placeholder="Customer name" style="max-width:140px;font-size:.8rem;padding:5px 9px">
+            </div>
+          </div>
+          <div class="cart-items" id="cart-items">
+            <div class="empty" style="padding:40px 14px">
+              <div class="empty-icon">🛒</div>
+              <div class="empty-title">Cart is empty</div>
+              <div class="empty-text">Click a product to add it</div>
+            </div>
+          </div>
+          <div class="cart-foot">
+            <div style="margin-bottom:10px">
+              <div class="fr" style="gap:8px;margin-bottom:8px">
+                <div class="fg" style="margin-bottom:0">
+                  <label class="fl" style="font-size:.7rem">Discount (₹)</label>
+                  <input type="number" class="fc" id="discount" value="0" min="0" step="0.01" style="font-size:.8rem;padding:6px 9px" oninput="updateTotals()">
+                </div>
+                <div class="fg" style="margin-bottom:0">
+                  <label class="fl" style="font-size:.7rem">Tax (₹)</label>
+                  <input type="number" class="fc" id="tax" value="0" min="0" step="0.01" style="font-size:.8rem;padding:6px 9px" oninput="updateTotals()">
+                </div>
+              </div>
+            </div>
+            <div class="cart-totals">
+              <div class="ctr-row"><span>Subtotal</span><span class="ca" id="subtotal">₹0.00</span></div>
+              <div class="ctr-row"><span>Discount</span><span class="ca" id="disc-show" style="color:var(--danger)">-₹0.00</span></div>
+              <div class="ctr-row"><span>Tax</span><span class="ca" id="tax-show">+₹0.00</span></div>
+              <div class="ctr-row grand"><span>TOTAL</span><span class="ca" id="grand-total">₹0.00</span></div>
+            </div>
+            <div class="fg" style="margin-bottom:10px">
+              <label class="fl" style="font-size:.7rem">Payment Method</label>
+              <select class="fc" id="pay-method" style="font-size:.82rem">
+                <option value="cash">💵 Cash</option>
+                <option value="card">💳 Card</option>
+                <option value="upi">📱 UPI</option>
+                <option value="credit">🏦 Credit</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center" id="checkout-btn" onclick="checkout()">
+              <span id="co-spin" class="spin hidden"></span> 💳 Process Sale
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INVOICE MODAL -->
+<div class="modal-ov" id="invoice-modal">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <span class="modal-title">🧾 Invoice Generated</span>
+      <button class="mc" onclick="Modal.close('invoice-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="invoice-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="Modal.close('invoice-modal')">Close</button>
+      <button class="btn btn-teal" onclick="printInvoice()">🖨️ Print Invoice</button>
+      <button class="btn btn-primary" onclick="newSale()">➕ New Sale</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let products = [], cart = [], lastInvoice = null;
+
+document.addEventListener('DOMContentLoaded', () => { loadProducts(); });
+
+async function loadProducts() {
+  try {
+    const r = await API.get('/api/products/');
+    products = r.data.filter(p=>p.stock_quantity>0);
+    populateCatFilter();
+    renderProductGrid(products);
+  } catch {
+    products = getDemoProducts();
+    populateCatFilter();
+    renderProductGrid(products);
+    Toast.info('Demo Mode', 'Sample products loaded.');
+  }
+}
+
+function populateCatFilter() {
+  const sel = document.getElementById('cat-fil');
+  const cats = [...new Set(products.map(p=>p.category))];
+  cats.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+}
+
+function filterProducts() {
+  const q   = document.getElementById('prod-search').value;
+  const cat = document.getElementById('cat-fil').value;
+  let filtered = localSearch(products, ['name','sku','category'], q);
+  if (cat) filtered = filtered.filter(p=>p.category===cat);
+  renderProductGrid(filtered);
+}
+
+function renderProductGrid(prods) {
+  const grid  = document.getElementById('prod-grid');
+  const empty = document.getElementById('prod-empty');
+  if (!prods.length) { grid.innerHTML=''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  grid.innerHTML = prods.map(p => {
+    const inCart  = cart.find(c=>c.product_id===p.id);
+    const isLow   = p.stock_quantity<=p.low_stock_threshold;
+    return `<div class="card" style="cursor:pointer;transition:all .2s;${isLow?'border-color:rgba(251,191,36,.3)':''}" onclick="addToCart('${p.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='${isLow?'rgba(251,191,36,.3)':'var(--b1)'}'" >
+      <div style="padding:14px">
+        <div style="font-weight:700;font-size:.87rem;margin-bottom:4px;line-height:1.3">${p.name}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span class="badge bt" style="font-size:.65rem">${p.category}</span>
+          ${isLow?`<span class="badge bw" style="font-size:.63rem">Low</span>`:''}
+        </div>
+        <div style="font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--accent);margin-bottom:4px">${Fmt.cur(p.selling_price)}</div>
+        <div style="font-size:.72rem;color:var(--t3)">${p.stock_quantity} in stock</div>
+        ${inCart?`<div style="margin-top:8px;padding:4px 8px;background:var(--accent-g);border:1px solid var(--b3);border-radius:var(--r);font-size:.72rem;color:var(--accent);text-align:center">✓ In cart: ${inCart.quantity}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function addToCart(productId) {
+  const p = products.find(x=>x.id===productId);
+  if (!p) return;
+  const existing = cart.find(c=>c.product_id===productId);
+  if (existing) {
+    if (existing.quantity >= p.stock_quantity) { Toast.warning('Stock Limit','Not enough stock available.'); return; }
+    existing.quantity++;
+  } else {
+    cart.push({ product_id:p.id, product_name:p.name, quantity:1, unit_price:p.selling_price, max_stock:p.stock_quantity });
+  }
+  renderCart();
+  filterProducts(); // refresh to show in-cart indicator
+}
+
+function renderCart() {
+  const container = document.getElementById('cart-items');
+  const count = cart.reduce((s,c)=>s+c.quantity,0);
+  document.getElementById('cart-count').textContent = `${count} item${count!==1?'s':''}`;
+  if (!cart.length) {
+    container.innerHTML = `<div class="empty" style="padding:40px 14px"><div class="empty-icon">🛒</div><div class="empty-title">Cart is empty</div><div class="empty-text">Click a product to add it</div></div>`;
+    updateTotals(); return;
+  }
+  container.innerHTML = cart.map((item,i) => `
+    <div class="cart-item">
+      <div class="ci-name">${item.product_name}</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <button class="qty-btn" onclick="changeQty(${i},-1)">−</button>
+        <span class="ci-qty">${item.quantity}</span>
+        <button class="qty-btn" onclick="changeQty(${i},1)">+</button>
+      </div>
+      <span class="ci-price">${Fmt.cur(item.quantity*item.unit_price)}</span>
+      <button class="ci-del" onclick="removeItem(${i})">✕</button>
+    </div>`).join('');
+  updateTotals();
+}
+
+function changeQty(idx, delta) {
+  const item = cart[idx];
+  const newQty = item.quantity + delta;
+  if (newQty<=0) { removeItem(idx); return; }
+  if (newQty>item.max_stock) { Toast.warning('Stock Limit',`Only ${item.max_stock} available.`); return; }
+  item.quantity = newQty;
+  renderCart();
+}
+
+function removeItem(idx) { cart.splice(idx,1); renderCart(); filterProducts(); }
+function clearCart()     { cart=[]; renderCart(); filterProducts(); }
+
+function updateTotals() {
+  const subtotal = cart.reduce((s,c)=>s+c.quantity*c.unit_price,0);
+  const disc     = parseFloat(document.getElementById('discount').value)||0;
+  const tax      = parseFloat(document.getElementById('tax').value)||0;
+  const grand    = subtotal-disc+tax;
+  document.getElementById('subtotal').textContent    = Fmt.cur(subtotal);
+  document.getElementById('disc-show').textContent   = `-${Fmt.cur(disc)}`;
+  document.getElementById('tax-show').textContent    = `+${Fmt.cur(tax)}`;
+  document.getElementById('grand-total').textContent = Fmt.cur(Math.max(0,grand));
+}
+
+async function checkout() {
+  if (!cart.length) { Toast.warning('Empty Cart','Add products to proceed.'); return; }
+  const btn = document.getElementById('checkout-btn'), sp = document.getElementById('co-spin');
+  btn.disabled=true; sp.classList.remove('hidden');
+  const body = {
+    customer_name: document.getElementById('cust-name').value||'Walk-in Customer',
+    items: cart.map(c=>({product_id:c.product_id,product_name:c.product_name,quantity:c.quantity,unit_price:c.unit_price})),
+    discount: parseFloat(document.getElementById('discount').value)||0,
+    tax:      parseFloat(document.getElementById('tax').value)||0,
+    payment_method: document.getElementById('pay-method').value,
+  };
+  try {
+    const r = await API.post('/api/sales/', body);
+    lastInvoice = r.data;
+    showInvoice(lastInvoice);
+    Toast.success('Sale Complete!', `Invoice ${r.invoice_number} generated.`);
+  } catch(err) {
+    // Demo mode: generate mock invoice
+    lastInvoice = generateMockInvoice(body);
+    showInvoice(lastInvoice);
+    Toast.success('Demo Sale Complete!', 'Mock invoice generated.');
+  } finally {
+    btn.disabled=false; sp.classList.add('hidden');
+  }
+}
+
+function showInvoice(sale) {
+  const items = sale.sale_items || cart.map(c=>({product_name:c.product_name,quantity:c.quantity,unit_price:c.unit_price,total_price:c.quantity*c.unit_price}));
+  document.getElementById('invoice-body').innerHTML = `
+    <div style="background:#fff;color:#111;border-radius:10px;padding:28px;font-family:var(--fb)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+        <div>
+          <div style="font-family:var(--fh);font-size:1.3rem;font-weight:800;color:#F97316">🏪 RetailOS</div>
+          <div style="font-size:.8rem;color:#666;margin-top:3px">Store Management System</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--fh);font-weight:700;font-size:1rem">${sale.invoice_number||'INV-DEMO'}</div>
+          <div style="font-size:.8rem;color:#666">${Fmt.dt(sale.created_at||new Date())}</div>
+        </div>
+      </div>
+      <div style="background:#f9f9f9;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:.82rem">
+        <strong>Customer:</strong> ${sale.customer_name||'Walk-in Customer'} &nbsp;|&nbsp;
+        <strong>Payment:</strong> ${(sale.payment_method||'cash').toUpperCase()}
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <thead><tr style="background:#f1f1f1">
+          <th style="padding:8px 10px;text-align:left">Product</th>
+          <th style="padding:8px 10px;text-align:center">Qty</th>
+          <th style="padding:8px 10px;text-align:right">Unit Price</th>
+          <th style="padding:8px 10px;text-align:right">Total</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(i=>`<tr style="border-bottom:1px solid #eee">
+            <td style="padding:8px 10px">${i.product_name}</td>
+            <td style="padding:8px 10px;text-align:center">${i.quantity}</td>
+            <td style="padding:8px 10px;text-align:right">${Fmt.cur(i.unit_price)}</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:600">${Fmt.cur(i.total_price||i.unit_price*i.quantity)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:14px;padding-top:12px;border-top:2px solid #eee">
+        <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:4px"><span>Subtotal</span><span>${Fmt.cur(sale.subtotal)}</span></div>
+        ${+sale.discount>0?`<div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:4px;color:#EF4444"><span>Discount</span><span>-${Fmt.cur(sale.discount)}</span></div>`:''}
+        ${+sale.tax>0?`<div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:4px"><span>Tax</span><span>+${Fmt.cur(sale.tax)}</span></div>`:''}
+        <div style="display:flex;justify-content:space-between;font-size:1.05rem;font-weight:800;margin-top:8px;padding-top:8px;border-top:2px solid #F97316"><span>TOTAL</span><span style="color:#F97316">${Fmt.cur(sale.total_amount)}</span></div>
+      </div>
+      <div style="text-align:center;margin-top:18px;font-size:.75rem;color:#999">Thank you for shopping with us! 🙏</div>
+    </div>`;
+  Modal.open('invoice-modal');
+}
+
+function printInvoice() {
+  const content = document.getElementById('invoice-body').innerHTML;
+  const win = window.open('','_blank','width=600,height=700');
+  win.document.write(`<!DOCTYPE html><html><head><title>Invoice</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Outfit',sans-serif;background:#fff;padding:20px}</style>
+    </head><body>${content}</body></html>`);
+  win.document.close(); win.focus(); setTimeout(()=>{win.print();win.close();},400);
+}
+
+function newSale() {
+  cart=[]; clearCart();
+  Modal.close('invoice-modal');
+  document.getElementById('discount').value='0';
+  document.getElementById('tax').value='0';
+  document.getElementById('cust-name').value='';
+  loadProducts();
+}
+
+function generateMockInvoice(body) {
+  const subtotal = body.items.reduce((s,i)=>s+i.quantity*i.unit_price,0);
+  return {
+    invoice_number:'INV-'+Date.now().toString().slice(-6),
+    customer_name:body.customer_name, payment_method:body.payment_method,
+    subtotal:subtotal, discount:body.discount, tax:body.tax,
+    total_amount:subtotal-body.discount+body.tax,
+    created_at:new Date().toISOString(),
+    sale_items:body.items.map(i=>({...i,total_price:i.quantity*i.unit_price}))
+  };
+}
+
+function getDemoProducts() {
+  return [
+    {id:'1',name:'Basmati Rice 5kg',category:'Groceries',sku:'GR-001',stock_quantity:150,selling_price:299,low_stock_threshold:20},
+    {id:'2',name:'Tata Salt 1kg',category:'Groceries',sku:'GR-002',stock_quantity:200,selling_price:25,low_stock_threshold:30},
+    {id:'3',name:'Amul Butter 500g',category:'Dairy',sku:'DA-001',stock_quantity:45,selling_price:285,low_stock_threshold:15},
+    {id:'5',name:'Surf Excel 1kg',category:'Household',sku:'HH-001',stock_quantity:60,selling_price:185,low_stock_threshold:15},
+    {id:'6',name:'Maggi Noodles 70g',category:'Instant Food',sku:'IF-001',stock_quantity:120,selling_price:18,low_stock_threshold:25},
+    {id:'8',name:'Parle-G Biscuits',category:'Snacks',sku:'SN-001',stock_quantity:200,selling_price:12,low_stock_threshold:50},
+    {id:'9',name:'Haldiram Mixture',category:'Snacks',sku:'SN-002',stock_quantity:30,selling_price:85,low_stock_threshold:10},
+    {id:'10',name:'Aashirvaad Flour 5kg',category:'Groceries',sku:'GR-003',stock_quantity:80,selling_price:240,low_stock_threshold:15}
+  ];
+}
+</script>
+</body></html>

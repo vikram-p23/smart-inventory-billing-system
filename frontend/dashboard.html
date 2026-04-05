@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Dashboard</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-wrap">
+  <!-- Sidebar injected by sidebar.js -->
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger" id="burger">
+        <span></span><span></span><span></span>
+      </button>
+      <span class="tb-title">Dashboard</span>
+      <div class="tb-search">
+        <span class="si">🔍</span>
+        <input type="text" placeholder="Quick search products…" id="global-search">
+      </div>
+      <div class="tb-actions">
+        <div class="tb-btn" id="notif-btn" title="Low stock alerts">
+          🔔 <span class="n-dot" id="notif-dot" style="display:none"></span>
+        </div>
+        <div class="avatar" id="user-av">A</div>
+      </div>
+    </header>
+
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-sub" id="date-sub">Loading…</p>
+        </div>
+        <div style="display:flex;gap:9px">
+          <a href="billing.html" class="btn btn-primary">🧾 New Sale</a>
+          <button class="btn btn-secondary" onclick="loadStats()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- STAT CARDS -->
+      <div class="stats-grid stagger" id="stats-grid">
+        <div class="stat co"><div class="s-icon io">💰</div><div><div class="s-label">Today's Revenue</div><div class="s-val" id="st-today">—</div><div class="s-sub" id="st-today-c">— transactions</div></div></div>
+        <div class="stat ct"><div class="s-icon it">📅</div><div><div class="s-label">Weekly Revenue</div><div class="s-val" id="st-week">—</div><div class="s-sub">Last 7 days</div></div></div>
+        <div class="stat cp"><div class="s-icon ip">🗓️</div><div><div class="s-label">Monthly Revenue</div><div class="s-val" id="st-month">—</div><div class="s-sub" id="st-month-name">This month</div></div></div>
+        <div class="stat cg"><div class="s-icon ig">📦</div><div><div class="s-label">Total Products</div><div class="s-val" id="st-prods">—</div><div class="s-sub" id="st-low">Loading…</div></div></div>
+        <div class="stat co"><div class="s-icon io">🏭</div><div><div class="s-label">Suppliers</div><div class="s-val" id="st-supps">—</div><div class="s-sub">Active vendors</div></div></div>
+        <div class="stat cr"><div class="s-icon ir">💳</div><div><div class="s-label">Total Revenue</div><div class="s-val" id="st-total">—</div><div class="s-sub" id="st-tx">— transactions</div></div></div>
+      </div>
+
+      <!-- CHARTS ROW -->
+      <div class="g73 mb20">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Revenue — Last 7 Days</span>
+            <span class="badge ba">Live</span>
+          </div>
+          <div class="card-body">
+            <canvas id="revenue-chart" height="110"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Category Distribution</span></div>
+          <div class="card-body">
+            <canvas id="cat-chart" height="180"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="g2">
+        <!-- Top Products -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🏆 Top Selling Products</span>
+            <a href="reports.html" class="btn btn-secondary btn-sm">View All</a>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead>
+              <tbody id="top-tbl"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Low Stock Alerts -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">⚠️ Low Stock Alerts</span>
+            <a href="inventory.html" class="btn btn-secondary btn-sm">Manage</a>
+          </div>
+          <div id="low-stock-list" style="max-height:320px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let revenueChart, catChart;
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('date-sub').textContent =
+    new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  loadStats();
+  // global search redirect
+  document.getElementById('global-search')?.addEventListener('keydown', e => {
+    if(e.key==='Enter') window.location.href=`inventory.html?search=${e.target.value}`;
+  });
+});
+
+async function loadStats() {
+  try {
+    const r = await API.get('/api/dashboard/stats');
+    const d = r.data;
+
+    document.getElementById('st-today').textContent   = Fmt.cur(d.today.revenue);
+    document.getElementById('st-today-c').textContent = `${d.today.transactions} transaction${d.today.transactions!==1?'s':''}`;
+    document.getElementById('st-week').textContent    = Fmt.cur(d.weekly_revenue);
+    document.getElementById('st-month').textContent   = Fmt.cur(d.monthly_revenue);
+    document.getElementById('st-month-name').textContent = new Date().toLocaleString('default',{month:'long',year:'numeric'});
+    document.getElementById('st-prods').textContent   = d.total_products;
+    document.getElementById('st-low').textContent     = `⚠️ ${d.low_stock_count} low stock`;
+    document.getElementById('st-supps').textContent   = d.total_suppliers;
+    document.getElementById('st-total').textContent   = Fmt.cur(d.total_revenue);
+    document.getElementById('st-tx').textContent      = `${d.total_transactions} all-time`;
+
+    if (d.low_stock_count > 0) document.getElementById('notif-dot').style.display='block';
+
+    renderRevenueChart(d.daily_chart);
+    renderCatChart(d.categories);
+    renderTopProducts(d.top_products);
+    renderLowStock();
+  } catch(err) {
+    // Demo mode fallback
+    renderDemoStats();
+    Toast.info('Demo Mode', 'Showing sample data. Connect your backend for live data.');
+  }
+}
+
+function renderDemoStats() {
+  const demo = {today:{revenue:12450,transactions:18},weekly_revenue:84200,monthly_revenue:312000,
+    total_revenue:1245000,total_products:10,low_stock_count:3,total_suppliers:3,total_transactions:420,
+    daily_chart:[
+      {label:'Mon',revenue:8200,transactions:12},{label:'Tue',revenue:11400,transactions:17},
+      {label:'Wed',revenue:9800,transactions:14},{label:'Thu',revenue:14200,transactions:21},
+      {label:'Fri',revenue:16500,transactions:24},{label:'Sat',revenue:19800,transactions:29},
+      {label:'Sun',revenue:12450,transactions:18}
+    ],
+    top_products:[
+      {name:'Basmati Rice 5kg',qty:420,revenue:125580},{name:'Maggi Noodles',qty:380,revenue:6840},
+      {name:'Parle-G Biscuits',qty:350,revenue:4200},{name:'Surf Excel 1kg',qty:120,revenue:22200},
+      {name:'Amul Butter 500g',qty:95,revenue:27075}
+    ],
+    categories:[{name:'Groceries',count:3,value:88200},{name:'Dairy',count:1,value:12825},
+      {name:'Personal Care',count:2,value:1053},{name:'Household',count:1,value:11100},{name:'Snacks',count:2,value:5800}]
+  };
+  document.getElementById('st-today').textContent   = Fmt.cur(demo.today.revenue);
+  document.getElementById('st-today-c').textContent = `${demo.today.transactions} transactions`;
+  document.getElementById('st-week').textContent    = Fmt.cur(demo.weekly_revenue);
+  document.getElementById('st-month').textContent   = Fmt.cur(demo.monthly_revenue);
+  document.getElementById('st-month-name').textContent = new Date().toLocaleString('default',{month:'long',year:'numeric'});
+  document.getElementById('st-prods').textContent   = demo.total_products;
+  document.getElementById('st-low').textContent     = `⚠️ ${demo.low_stock_count} low stock`;
+  document.getElementById('st-supps').textContent   = demo.total_suppliers;
+  document.getElementById('st-total').textContent   = Fmt.cur(demo.total_revenue);
+  document.getElementById('st-tx').textContent      = `${demo.total_transactions} all-time`;
+  document.getElementById('notif-dot').style.display = 'block';
+  renderRevenueChart(demo.daily_chart);
+  renderCatChart(demo.categories);
+  renderTopProducts(demo.top_products);
+  renderDemoLowStock();
+}
+
+function renderRevenueChart(data) {
+  const ctx = document.getElementById('revenue-chart').getContext('2d');
+  if (revenueChart) revenueChart.destroy();
+  revenueChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d=>d.label),
+      datasets: [{
+        label: 'Revenue (₹)',
+        data: data.map(d=>d.revenue),
+        backgroundColor: 'rgba(249,115,22,0.7)',
+        borderColor: '#F97316',
+        borderWidth: 1,
+        borderRadius: 5,
+        borderSkipped: false,
+      },{
+        label: 'Transactions',
+        data: data.map(d=>d.transactions),
+        type: 'line',
+        borderColor: '#0FBBAA',
+        backgroundColor: 'rgba(15,187,170,0.1)',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: '#0FBBAA',
+        tension: 0.4,
+        yAxisID: 'y2',
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: true, position: 'top', labels:{usePointStyle:true,padding:14} } },
+      scales: {
+        y:  { grid:{color:'rgba(255,255,255,.05)'}, ticks:{callback:v=>'₹'+Fmt.num(v)} },
+        y2: { position:'right', grid:{display:false}, ticks:{color:'#0FBBAA'} },
+        x:  { grid:{display:false} }
+      }
+    }
+  });
+}
+
+function renderCatChart(cats) {
+  const ctx = document.getElementById('cat-chart').getContext('2d');
+  if (catChart) catChart.destroy();
+  const colors = ['#F97316','#0FBBAA','#8B5CF6','#10B981','#FBBF24','#EF4444','#38BDF8'];
+  catChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c=>c.name),
+      datasets: [{
+        data: cats.map(c=>c.count),
+        backgroundColor: colors.slice(0,cats.length),
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:true, cutout:'62%',
+      plugins:{
+        legend:{position:'bottom',labels:{usePointStyle:true,padding:12,boxWidth:8}},
+        tooltip:{callbacks:{label: ctx=>`${ctx.label}: ${ctx.raw} products`}}
+      }
+    }
+  });
+}
+
+function renderTopProducts(products) {
+  const tbody = document.getElementById('top-tbl');
+  if (!products?.length) { emptyRow(tbody,4,'No sales data yet'); return; }
+  tbody.innerHTML = products.map((p,i)=>`
+    <tr>
+      <td><span class="badge ${i===0?'ba':i===1?'bt':'bm'}">#${i+1}</span></td>
+      <td class="f6">${p.name}</td>
+      <td><span class="badge bs">${Fmt.num(p.qty)} units</span></td>
+      <td class="f6 ta">${Fmt.cur(p.revenue)}</td>
+    </tr>`).join('');
+}
+
+async function renderLowStock() {
+  const container = document.getElementById('low-stock-list');
+  try {
+    const r = await API.get('/api/dashboard/low-stock');
+    if (!r.data.length) {
+      container.innerHTML = `<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">All stocked up!</div><div class="empty-text">No low-stock items.</div></div>`;
+      return;
+    }
+    container.innerHTML = r.data.map(p => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--b1)">
+        <div>
+          <div style="font-weight:600;font-size:.85rem">${p.name}</div>
+          <div style="font-size:.75rem;color:var(--t3)">${p.category}</div>
+        </div>
+        <div style="text-align:right">
+          ${p.stock_quantity===0
+            ? '<span class="badge bd">Out of Stock</span>'
+            : `<span class="badge bw">${p.stock_quantity} left</span>`}
+          <div style="font-size:.7rem;color:var(--t3);margin-top:2px">min: ${p.low_stock_threshold}</div>
+        </div>
+      </div>`).join('');
+  } catch { renderDemoLowStock(); }
+}
+
+function renderDemoLowStock() {
+  const container = document.getElementById('low-stock-list');
+  const items = [
+    {name:'Colgate Toothpaste',category:'Personal Care',stock_quantity:8,low_stock_threshold:10},
+    {name:'Dettol Soap 125g',category:'Personal Care',stock_quantity:5,low_stock_threshold:10},
+    {name:'Amul Butter 500g',category:'Dairy',stock_quantity:9,low_stock_threshold:15},
+  ];
+  container.innerHTML = items.map(p=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--b1)">
+      <div><div style="font-weight:600;font-size:.85rem">${p.name}</div><div style="font-size:.75rem;color:var(--t3)">${p.category}</div></div>
+      <div style="text-align:right">
+        <span class="badge bw">${p.stock_quantity} left</span>
+        <div style="font-size:.7rem;color:var(--t3);margin-top:2px">min: ${p.low_stock_threshold}</div>
+      </div>
+    </div>`).join('');
+}
+</script>
+</body></html>

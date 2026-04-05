@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Suppliers</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-wrap">
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger"><span></span><span></span><span></span></button>
+      <span class="tb-title">Suppliers</span>
+      <div class="tb-actions"><div class="avatar" id="user-av">A</div></div>
+    </header>
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Suppliers</h1>
+          <p class="page-sub">Manage vendors and distributor contacts</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAdd()">＋ Add Supplier</button>
+      </div>
+      <div class="toolbar">
+        <div class="tl">
+          <div class="sw-wrap"><span class="si">🔍</span><input type="text" class="fc" id="sup-search" placeholder="Search suppliers…" oninput="filterSuppliers()"></div>
+        </div>
+        <div class="tr2">
+          <span id="sup-count" style="font-size:.82rem;color:var(--t2)">Loading…</span>
+        </div>
+      </div>
+      <div class="g3 stagger" id="sup-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SUPPLIER MODAL -->
+<div class="modal-ov" id="sup-modal">
+  <div class="modal">
+    <div class="modal-head"><span class="modal-title" id="sm-title">Add Supplier</span><button class="mc" onclick="Modal.close('sup-modal')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="sm-id">
+      <div class="fg"><label class="fl">Supplier Name *</label><input type="text" class="fc" id="sm-name" placeholder="e.g. Metro Cash & Carry" required></div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Contact Person</label><input type="text" class="fc" id="sm-contact" placeholder="Rajesh Kumar"></div>
+        <div class="fg"><label class="fl">Phone</label><input type="tel" class="fc" id="sm-phone" placeholder="+91-XXXXX-XXXXX"></div>
+      </div>
+      <div class="fg"><label class="fl">Email</label><input type="email" class="fc" id="sm-email" placeholder="contact@supplier.com"></div>
+      <div class="fg"><label class="fl">Address</label><textarea class="fc" id="sm-address" rows="2" placeholder="Supplier address…"></textarea></div>
+      <div class="fr">
+        <div class="fg"><label class="fl">GST Number</label><input type="text" class="fc" id="sm-gst" placeholder="27XXXXX1234X1ZX"></div>
+        <div class="fg"><label class="fl">Notes</label><input type="text" class="fc" id="sm-notes" placeholder="Any additional info"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="Modal.close('sup-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSupplier()" id="sm-save">Save Supplier</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let suppliers = [];
+
+document.addEventListener('DOMContentLoaded', loadSuppliers);
+
+async function loadSuppliers() {
+  document.getElementById('sup-grid').innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--t3)"><div class="spin" style="width:24px;height:24px;margin:0 auto 10px"></div>Loading suppliers…</div>`;
+  try {
+    const r = await API.get('/api/suppliers/');
+    suppliers = r.data;
+    renderGrid(suppliers);
+  } catch {
+    suppliers = getDemoSuppliers();
+    renderGrid(suppliers);
+    Toast.info('Demo Mode','Sample supplier data loaded.');
+  }
+}
+
+function filterSuppliers() {
+  const q = document.getElementById('sup-search').value;
+  renderGrid(localSearch(suppliers, ['name','contact_person','email','phone'], q));
+}
+
+function renderGrid(data) {
+  const grid = document.getElementById('sup-grid');
+  document.getElementById('sup-count').textContent = `${data.length} supplier${data.length!==1?'s':''}`;
+  if (!data.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1" class="empty"><div class="empty-icon">🏭</div><div class="empty-title">No suppliers found</div><div class="empty-text">Add your first supplier</div></div>`;
+    return;
+  }
+  grid.innerHTML = data.map(s=>`
+    <div class="card fade-in" style="transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--b1)'">
+      <div style="padding:18px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+          <div style="width:42px;height:42px;border-radius:var(--rm);background:var(--accent-g);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">🏭</div>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-secondary btn-icon btn-sm" onclick="editSupplier('${s.id}')" title="Edit">✏️</button>
+            <button class="btn btn-danger btn-icon btn-sm" onclick="deleteSupplier('${s.id}','${s.name.replace(/'/g,"\\'")}')">🗑️</button>
+          </div>
+        </div>
+        <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;margin-bottom:3px">${s.name}</div>
+        ${s.contact_person?`<div style="font-size:.8rem;color:var(--t2);margin-bottom:8px">👤 ${s.contact_person}</div>`:''}
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--t3)">
+          ${s.phone?`<div>📞 ${s.phone}</div>`:''}
+          ${s.email?`<div>📧 ${s.email}</div>`:''}
+          ${s.address?`<div>📍 ${s.address.substring(0,50)}</div>`:''}
+          ${s.gst_number?`<div>🏛️ GST: ${s.gst_number}</div>`:''}
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--b1)">
+          <div style="font-size:.7rem;color:var(--t3)">Added ${Fmt.date(s.created_at)}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function openAdd() {
+  document.getElementById('sm-id').value='';
+  document.getElementById('sm-title').textContent='Add Supplier';
+  document.getElementById('sm-save').textContent='Add Supplier';
+  ['sm-name','sm-contact','sm-phone','sm-email','sm-address','sm-gst','sm-notes'].forEach(id=>document.getElementById(id).value='');
+  Modal.open('sup-modal');
+}
+
+function editSupplier(id) {
+  const s = suppliers.find(x=>x.id===id);
+  if (!s) return;
+  document.getElementById('sm-id').value     = s.id;
+  document.getElementById('sm-title').textContent = 'Edit Supplier';
+  document.getElementById('sm-save').textContent  = 'Update Supplier';
+  document.getElementById('sm-name').value    = s.name;
+  document.getElementById('sm-contact').value = s.contact_person||'';
+  document.getElementById('sm-phone').value   = s.phone||'';
+  document.getElementById('sm-email').value   = s.email||'';
+  document.getElementById('sm-address').value = s.address||'';
+  document.getElementById('sm-gst').value     = s.gst_number||'';
+  document.getElementById('sm-notes').value   = s.notes||'';
+  Modal.open('sup-modal');
+}
+
+async function saveSupplier() {
+  const id   = document.getElementById('sm-id').value;
+  const name = document.getElementById('sm-name').value.trim();
+  if (!name) { Toast.error('Validation','Supplier name is required.'); return; }
+  const body = {
+    name, contact_person:document.getElementById('sm-contact').value||null,
+    phone:document.getElementById('sm-phone').value||null, email:document.getElementById('sm-email').value||null,
+    address:document.getElementById('sm-address').value||null, gst_number:document.getElementById('sm-gst').value||null,
+    notes:document.getElementById('sm-notes').value||null
+  };
+  const btn=document.getElementById('sm-save');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+  try {
+    if (id) await API.put(`/api/suppliers/${id}`, body);
+    else    await API.post('/api/suppliers/', body);
+    Toast.success('Success!', id?'Supplier updated.':'Supplier added.');
+    Modal.close('sup-modal'); loadSuppliers();
+  } catch(err){ Toast.error('Save Failed', err.message); }
+  finally{ btn.disabled=false; btn.textContent=id?'Update Supplier':'Add Supplier'; }
+}
+
+function deleteSupplier(id, name) {
+  confirmDel(`Delete "${name}"? Purchase history will remain.`, async ()=>{
+    try { await API.del(`/api/suppliers/${id}`); Toast.success('Deleted',`"${name}" removed.`); loadSuppliers(); }
+    catch(err){ Toast.error('Delete Failed', err.message); }
+  });
+}
+
+function getDemoSuppliers(){
+  return [
+    {id:'1',name:'Metro Cash & Carry',contact_person:'Rajesh Kumar',email:'rajesh@metro.in',phone:'+91-98765-43210',address:'Whitefield, Bengaluru',gst_number:'29AABCM1234A1Z5',created_at:new Date().toISOString()},
+    {id:'2',name:'Amul Dairy Ltd',contact_person:'Priya Sharma',email:'priya@amul.coop',phone:'+91-98765-43211',address:'Anand, Gujarat',gst_number:'24AABCA0123B1Z3',created_at:new Date().toISOString()},
+    {id:'3',name:'HUL Distributor',contact_person:'Anil Gupta',email:'anil@hul-dist.com',phone:'+91-98765-43212',address:'Electronic City, Bengaluru',gst_number:'29AABCH5678C1Z7',created_at:new Date().toISOString()}
+  ];
+}
+</script>
+</body></html>

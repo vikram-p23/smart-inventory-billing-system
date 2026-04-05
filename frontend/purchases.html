@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Procurement</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-wrap">
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger"><span></span><span></span><span></span></button>
+      <span class="tb-title">Procurement</span>
+      <div class="tb-actions"><div class="avatar" id="user-av">A</div></div>
+    </header>
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Procurement</h1>
+          <p class="page-sub" id="pu-sub">Loading purchase records…</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddPurchase()">＋ New Purchase</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid stagger" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:18px">
+        <div class="stat co"><div class="s-icon io">🛒</div><div><div class="s-label">Total Purchases</div><div class="s-val" id="ps-count">—</div></div></div>
+        <div class="stat ct"><div class="s-icon it">💰</div><div><div class="s-label">Total Spend</div><div class="s-val" id="ps-spend">—</div></div></div>
+        <div class="stat cp"><div class="s-icon ip">🏭</div><div><div class="s-label">Suppliers Used</div><div class="s-val" id="ps-sups">—</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Purchase Records</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="sw-wrap"><span class="si">🔍</span><input type="text" class="fc" id="pu-search" placeholder="Search…" oninput="filterPurchases()"></div>
+            <input type="date" class="fc" id="pu-from" style="max-width:140px" onchange="filterPurchases()">
+            <input type="date" class="fc" id="pu-to"   style="max-width:140px" onchange="filterPurchases()">
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Product</th><th>Supplier</th><th>Qty</th><th>Unit Cost</th><th>Total Cost</th><th>Actions</th></tr></thead>
+            <tbody id="pu-tbody"></tbody>
+          </table>
+        </div>
+        <div id="pu-pager" style="padding:11px 15px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:.82rem;color:var(--t2)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PURCHASE MODAL -->
+<div class="modal-ov" id="pu-modal">
+  <div class="modal">
+    <div class="modal-head"><span class="modal-title">New Purchase</span><button class="mc" onclick="Modal.close('pu-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fr">
+        <div class="fg">
+          <label class="fl">Supplier *</label>
+          <select class="fc" id="pu-sup" onchange="onSupplierChange()">
+            <option value="">Select supplier…</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">Supplier Name (override)</label>
+          <input type="text" class="fc" id="pu-supname" placeholder="Or type name manually">
+        </div>
+      </div>
+      <div class="fr">
+        <div class="fg">
+          <label class="fl">Product *</label>
+          <select class="fc" id="pu-prod" onchange="onProductChange()">
+            <option value="">Select product…</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">Product Name (override)</label>
+          <input type="text" class="fc" id="pu-prodname" placeholder="Or type name manually">
+        </div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Quantity *</label><input type="number" class="fc" id="pu-qty" min="1" placeholder="e.g. 50" oninput="calcTotal()"></div>
+        <div class="fg"><label class="fl">Cost Price per Unit (₹) *</label><input type="number" class="fc" id="pu-price" min="0" step="0.01" placeholder="0.00" oninput="calcTotal()"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Purchase Date</label><input type="date" class="fc" id="pu-date"></div>
+        <div class="fg" style="display:flex;align-items:flex-end">
+          <div style="background:var(--bg-secondary);border:1px solid var(--b1);border-radius:var(--rm);padding:8px 12px;width:100%;font-size:.82rem;color:var(--t2)">
+            Total: <strong id="pu-total" class="ta">—</strong>
+          </div>
+        </div>
+      </div>
+      <div class="fg"><label class="fl">Notes</label><input type="text" class="fc" id="pu-notes" placeholder="Optional notes"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="Modal.close('pu-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePurchase()" id="pu-save">Record Purchase</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let purchases=[], suppliers=[], products=[], page=1, perPage=15;
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const today = new Date().toISOString().split('T')[0];
+  const monthAgo = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
+  document.getElementById('pu-from').value = monthAgo;
+  document.getElementById('pu-to').value   = today;
+  document.getElementById('pu-date').value = today;
+  loadAll();
+});
+
+async function loadAll() {
+  loadingRow(document.getElementById('pu-tbody'), 7);
+  try {
+    const [pr, sr, prodR] = await Promise.all([
+      API.get('/api/suppliers/purchases/all'),
+      API.get('/api/suppliers/'),
+      API.get('/api/products/')
+    ]);
+    purchases = pr.data; suppliers = sr.data; products = prodR.data;
+  } catch {
+    purchases = getDemoPurchases(); suppliers = getDemoSups(); products = getDemoProds();
+    Toast.info('Demo Mode','Sample procurement data loaded.');
+  }
+  updateStats(purchases);
+  populateDropdowns();
+  filterPurchases();
+}
+
+function updateStats(data) {
+  const spend = data.reduce((s,p)=>s+parseFloat(p.total_cost||0),0);
+  const sups  = new Set(data.map(p=>p.supplier_name)).size;
+  document.getElementById('ps-count').textContent = data.length;
+  document.getElementById('ps-spend').textContent = Fmt.cur(spend);
+  document.getElementById('ps-sups').textContent  = sups;
+  document.getElementById('pu-sub').textContent   = `${data.length} purchase records, ₹${Fmt.num(spend)} total spent`;
+}
+
+function filterPurchases() {
+  const q    = document.getElementById('pu-search').value;
+  const from = document.getElementById('pu-from').value;
+  const to   = document.getElementById('pu-to').value;
+  let filtered = localSearch(purchases,['supplier_name','product_name'],q);
+  if (from) filtered = filtered.filter(p=>p.purchase_date>=from);
+  if (to)   filtered = filtered.filter(p=>p.purchase_date<=to);
+  page=1; renderTable(filtered);
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('pu-tbody');
+  if (!data.length) { emptyRow(tbody,7,'No purchase records'); updatePager(0); return; }
+  const slice = data.slice((page-1)*perPage, page*perPage);
+  tbody.innerHTML = slice.map(p=>`
+    <tr>
+      <td><span style="font-size:.8rem">${Fmt.date(p.purchase_date)}</span></td>
+      <td class="f6">${p.product_name}</td>
+      <td><span class="badge bt">${p.supplier_name}</span></td>
+      <td><span class="badge bs">${Fmt.num(p.quantity)} units</span></td>
+      <td>${Fmt.cur(p.cost_price)}</td>
+      <td class="f6 ta">${Fmt.cur(p.total_cost)}</td>
+      <td><button class="btn btn-danger btn-icon btn-sm" onclick="deletePurchase('${p.id}','${p.product_name}')">🗑️</button></td>
+    </tr>`).join('');
+  updatePager(data.length);
+}
+
+function updatePager(total) {
+  const pages=Math.ceil(total/perPage), pg=document.getElementById('pu-pager');
+  if (!total){pg.innerHTML='';return;}
+  pg.innerHTML=`<span>${(page-1)*perPage+1}–${Math.min(page*perPage,total)} of ${total}</span>
+    <div style="display:flex;gap:5px">
+      <button class="btn btn-secondary btn-sm" onclick="changePg(-1)" ${page<=1?'disabled':''}>← Prev</button>
+      <span style="padding:4px 9px;background:var(--bg-secondary);border-radius:var(--rm);font-size:.78rem">${page}/${pages}</span>
+      <button class="btn btn-secondary btn-sm" onclick="changePg(1)" ${page>=pages?'disabled':''}>Next →</button>
+    </div>`;
+}
+function changePg(d){page+=d;filterPurchases();}
+
+function populateDropdowns() {
+  const ss=document.getElementById('pu-sup'), ps=document.getElementById('pu-prod');
+  ss.innerHTML='<option value="">Select supplier…</option>';
+  ps.innerHTML='<option value="">Select product…</option>';
+  suppliers.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.dataset.name=s.name;o.textContent=s.name;ss.appendChild(o);});
+  products.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.dataset.name=p.name;o.dataset.cost=p.cost_price;o.textContent=`${p.name} (Stock: ${p.stock_quantity})`;ps.appendChild(o);});
+}
+
+function onSupplierChange() {
+  const sel=document.getElementById('pu-sup');
+  const opt=sel.options[sel.selectedIndex];
+  if (opt?.dataset.name) document.getElementById('pu-supname').value=opt.dataset.name;
+}
+function onProductChange() {
+  const sel=document.getElementById('pu-prod');
+  const opt=sel.options[sel.selectedIndex];
+  if (opt?.dataset.name) { document.getElementById('pu-prodname').value=opt.dataset.name; document.getElementById('pu-price').value=opt.dataset.cost||''; calcTotal(); }
+}
+function calcTotal() {
+  const qty=parseFloat(document.getElementById('pu-qty').value)||0;
+  const pr=parseFloat(document.getElementById('pu-price').value)||0;
+  document.getElementById('pu-total').textContent = qty&&pr ? Fmt.cur(qty*pr) : '—';
+}
+
+function openAddPurchase() {
+  ['pu-sup','pu-prod'].forEach(id=>document.getElementById(id).value='');
+  ['pu-supname','pu-prodname','pu-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pu-qty').value='';
+  document.getElementById('pu-price').value='';
+  document.getElementById('pu-total').textContent='—';
+  document.getElementById('pu-date').value=new Date().toISOString().split('T')[0];
+  Modal.open('pu-modal');
+}
+
+async function savePurchase() {
+  const sup_id  = document.getElementById('pu-sup').value;
+  const prod_id = document.getElementById('pu-prod').value;
+  const supname = document.getElementById('pu-supname').value.trim();
+  const prodname= document.getElementById('pu-prodname').value.trim();
+  const qty     = parseInt(document.getElementById('pu-qty').value);
+  const price   = parseFloat(document.getElementById('pu-price').value);
+  if (!supname||!prodname||!qty||!price) { Toast.error('Validation','All required fields must be filled.'); return; }
+  const body = {
+    supplier_id:sup_id||null, product_id:prod_id||null,
+    supplier_name:supname, product_name:prodname,
+    quantity:qty, cost_price:price,
+    purchase_date:document.getElementById('pu-date').value||null,
+    notes:document.getElementById('pu-notes').value||null
+  };
+  const btn=document.getElementById('pu-save');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+  try {
+    await API.post('/api/suppliers/purchases', body);
+    Toast.success('Purchase Recorded!', `Stock updated (+${qty} units of ${prodname}).`);
+    Modal.close('pu-modal'); loadAll();
+  } catch(err){ Toast.error('Failed', err.message); }
+  finally{ btn.disabled=false; btn.textContent='Record Purchase'; }
+}
+
+function deletePurchase(id, name) {
+  confirmDel(`Delete purchase record for "${name}"?`, async()=>{
+    try { await API.del(`/api/suppliers/purchases/${id}`); Toast.success('Deleted','Purchase record removed.'); loadAll(); }
+    catch(err){ Toast.error('Failed',err.message); }
+  });
+}
+
+function getDemoPurchases(){return[
+  {id:'1',supplier_name:'Metro Cash & Carry',product_name:'Basmati Rice 5kg',quantity:100,cost_price:220,total_cost:22000,purchase_date:'2025-03-28'},
+  {id:'2',supplier_name:'HUL Distributor',product_name:'Surf Excel 1kg',quantity:50,cost_price:145,total_cost:7250,purchase_date:'2025-03-25'},
+  {id:'3',supplier_name:'Amul Dairy Ltd',product_name:'Amul Butter 500g',quantity:30,cost_price:240,total_cost:7200,purchase_date:'2025-03-22'},
+  {id:'4',supplier_name:'Metro Cash & Carry',product_name:'Tata Salt 1kg',quantity:200,cost_price:18,total_cost:3600,purchase_date:'2025-03-18'},
+];}
+function getDemoSups(){return[{id:'1',name:'Metro Cash & Carry'},{id:'2',name:'Amul Dairy Ltd'},{id:'3',name:'HUL Distributor'}];}
+function getDemoProds(){return[{id:'1',name:'Basmati Rice 5kg',cost_price:220,stock_quantity:150},{id:'2',name:'Tata Salt 1kg',cost_price:18,stock_quantity:200},{id:'3',name:'Amul Butter 500g',cost_price:240,stock_quantity:45}];}
+</script>
+</body></html>

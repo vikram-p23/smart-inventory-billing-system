@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RetailOS — Reports</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-wrap">
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="burger"><span></span><span></span><span></span></button>
+      <span class="tb-title">Reports & Analytics</span>
+      <div class="tb-actions"><div class="avatar" id="user-av">A</div></div>
+    </header>
+    <div class="page fade-in">
+      <div class="ph">
+        <div class="ph-left">
+          <h1 class="page-title">Reports</h1>
+          <p class="page-sub">Sales history, analytics and performance insights</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <select class="fc" id="period-sel" onchange="loadReports()" style="max-width:160px">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 3 months</option>
+            <option value="365">This year</option>
+          </select>
+          <button class="btn btn-secondary" onclick="loadReports()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid stagger mb20">
+        <div class="stat co"><div class="s-icon io">💰</div><div><div class="s-label">Period Revenue</div><div class="s-val" id="r-rev">—</div></div></div>
+        <div class="stat ct"><div class="s-icon it">🧾</div><div><div class="s-label">Transactions</div><div class="s-val" id="r-tx">—</div></div></div>
+        <div class="stat cp"><div class="s-icon ip">📊</div><div><div class="s-label">Avg Order Value</div><div class="s-val" id="r-avg">—</div></div></div>
+        <div class="stat cg"><div class="s-icon ig">🏆</div><div><div class="s-label">Top Product</div><div class="s-val" id="r-top" style="font-size:.95rem">—</div></div></div>
+      </div>
+
+      <div class="g73 mb20">
+        <div class="card">
+          <div class="card-head"><span class="card-title">Daily Revenue Trend</span></div>
+          <div class="card-body"><canvas id="trend-chart" height="130"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Payment Methods</span></div>
+          <div class="card-body"><canvas id="pay-chart" height="200"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Sales Table -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Sales Transactions</span>
+          <div style="display:flex;gap:7px">
+            <div class="sw-wrap"><span class="si">🔍</span><input type="text" class="fc" id="sale-search" placeholder="Invoice / Customer…" oninput="filterSales()"></div>
+            <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Items</th><th>Payment</th><th>Date & Time</th><th>Total</th><th>Actions</th></tr></thead>
+            <tbody id="sales-tbody"></tbody>
+          </table>
+        </div>
+        <div id="sales-pager" style="padding:11px 15px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:.82rem;color:var(--t2)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SALE DETAIL MODAL -->
+<div class="modal-ov" id="sale-modal">
+  <div class="modal modal-lg">
+    <div class="modal-head"><span class="modal-title">Sale Details</span><button class="mc" onclick="Modal.close('sale-modal')">✕</button></div>
+    <div class="modal-body" id="sale-detail-body"></div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="Modal.close('sale-modal')">Close</button></div>
+  </div>
+</div>
+
+<div id="toast-ct"></div>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script>
+let allSales=[], filteredSales=[], page=1, perPage=15, trendChart, payChart;
+
+document.addEventListener('DOMContentLoaded', loadReports);
+
+async function loadReports() {
+  const days = parseInt(document.getElementById('period-sel').value)||30;
+  const from = new Date(Date.now()-days*86400000).toISOString().split('T')[0];
+  loadingRow(document.getElementById('sales-tbody'), 7);
+  try {
+    const r = await API.get(`/api/sales/?from_date=${from}&limit=500`);
+    allSales = r.data;
+  } catch {
+    allSales = getDemoSales();
+    Toast.info('Demo Mode','Sample sales data loaded.');
+  }
+  filteredSales = allSales;
+  updateStats(allSales);
+  renderCharts(allSales);
+  filterSales();
+}
+
+function updateStats(sales) {
+  const rev  = sales.reduce((s,x)=>s+parseFloat(x.total_amount||0),0);
+  const avg  = sales.length ? rev/sales.length : 0;
+  const tops = {};
+  sales.forEach(s=>s.sale_items?.forEach(i=>{tops[i.product_name]=(tops[i.product_name]||0)+i.quantity;}));
+  const topName = Object.entries(tops).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—';
+  document.getElementById('r-rev').textContent = Fmt.cur(rev);
+  document.getElementById('r-tx').textContent  = sales.length;
+  document.getElementById('r-avg').textContent = Fmt.cur(avg);
+  document.getElementById('r-top').textContent = topName;
+}
+
+function renderCharts(sales) {
+  // Daily trend
+  const byDay = {};
+  sales.forEach(s=>{const d=s.created_at?.split('T')[0]; if(d){byDay[d]=(byDay[d]||0)+parseFloat(s.total_amount||0);}});
+  const days=Object.keys(byDay).sort().slice(-30);
+  const ctx1 = document.getElementById('trend-chart').getContext('2d');
+  if(trendChart) trendChart.destroy();
+  trendChart = new Chart(ctx1, {
+    type:'line',
+    data:{labels:days.map(d=>new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})),
+      datasets:[{label:'Revenue',data:days.map(d=>byDay[d]||0),borderColor:'#F97316',backgroundColor:'rgba(249,115,22,0.1)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'₹'+Fmt.num(v)}},x:{grid:{display:false},ticks:{maxTicksLimit:8}}}}
+  });
+  // Payment method
+  const byPay={};
+  sales.forEach(s=>{const m=s.payment_method||'cash';byPay[m]=(byPay[m]||0)+1;});
+  const ctx2=document.getElementById('pay-chart').getContext('2d');
+  if(payChart) payChart.destroy();
+  payChart=new Chart(ctx2,{
+    type:'doughnut',
+    data:{labels:Object.keys(byPay).map(k=>k.toUpperCase()),
+      datasets:[{data:Object.values(byPay),backgroundColor:['#F97316','#0FBBAA','#8B5CF6','#FBBF24'],borderWidth:0,hoverOffset:5}]},
+    options:{responsive:true,maintainAspectRatio:true,cutout:'60%',plugins:{legend:{position:'bottom',labels:{usePointStyle:true,padding:10}}}}
+  });
+}
+
+function filterSales() {
+  const q=document.getElementById('sale-search').value;
+  filteredSales=localSearch(allSales,['invoice_number','customer_name','payment_method'],q);
+  page=1; renderSalesTable(filteredSales);
+}
+
+function renderSalesTable(data) {
+  const tbody=document.getElementById('sales-tbody');
+  if(!data.length){emptyRow(tbody,7,'No sales found');updatePager(0);return;}
+  const slice=data.slice((page-1)*perPage,page*perPage);
+  tbody.innerHTML=slice.map(s=>`
+    <tr>
+      <td><span class="badge ba" style="font-family:monospace;font-size:.65rem">${s.invoice_number}</span></td>
+      <td class="f6">${s.customer_name||'Walk-in'}</td>
+      <td><span class="badge bm">${s.sale_items?.length||0} item${s.sale_items?.length!==1?'s':''}</span></td>
+      <td>${payBadge(s.payment_method)}</td>
+      <td style="font-size:.8rem;color:var(--t2)">${Fmt.dt(s.created_at)}</td>
+      <td class="f6 ta">${Fmt.cur(s.total_amount)}</td>
+      <td style="display:flex;gap:5px">
+        <button class="btn btn-secondary btn-icon btn-sm" onclick="viewSale('${s.id}')" title="View">👁️</button>
+        <button class="btn btn-danger btn-icon btn-sm" onclick="deleteSale('${s.id}','${s.invoice_number}')" title="Delete">🗑️</button>
+      </td>
+    </tr>`).join('');
+  updatePager(data.length);
+}
+
+function updatePager(total){
+  const pages=Math.ceil(total/perPage),pg=document.getElementById('sales-pager');
+  if(!total){pg.innerHTML='';return;}
+  pg.innerHTML=`<span>${(page-1)*perPage+1}–${Math.min(page*perPage,total)} of ${total} transactions</span>
+    <div style="display:flex;gap:5px">
+      <button class="btn btn-secondary btn-sm" onclick="chPg(-1)" ${page<=1?'disabled':''}>← Prev</button>
+      <span style="padding:4px 9px;background:var(--bg-secondary);border-radius:var(--rm);font-size:.78rem">${page}/${pages}</span>
+      <button class="btn btn-secondary btn-sm" onclick="chPg(1)" ${page>=pages?'disabled':''}>Next →</button>
+    </div>`;
+}
+function chPg(d){page+=d;renderSalesTable(filteredSales);}
+
+function viewSale(id) {
+  const s = allSales.find(x=>x.id===id);
+  if(!s) return;
+  const items = s.sale_items||[];
+  document.getElementById('sale-detail-body').innerHTML=`
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px">
+      <div><div class="f7 fh" style="font-size:1rem">${s.invoice_number}</div><div style="color:var(--t2);font-size:.82rem">${Fmt.dt(s.created_at)}</div></div>
+      <div style="text-align:right"><div class="f7" style="color:var(--accent);font-size:1.1rem">${Fmt.cur(s.total_amount)}</div>${payBadge(s.payment_method)}</div>
+    </div>
+    <div style="font-size:.82rem;color:var(--t2);margin-bottom:12px">Customer: <strong style="color:var(--t1)">${s.customer_name||'Walk-in'}</strong></div>
+    <table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-bottom:14px">
+      <thead><tr style="border-bottom:1px solid var(--b1)">
+        <th style="padding:8px 10px;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--t3)">Product</th>
+        <th style="padding:8px 10px;text-align:center;font-size:.68rem;text-transform:uppercase;color:var(--t3)">Qty</th>
+        <th style="padding:8px 10px;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--t3)">Unit</th>
+        <th style="padding:8px 10px;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--t3)">Total</th>
+      </tr></thead>
+      <tbody>${items.map(i=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:8px 10px">${i.product_name}</td>
+        <td style="padding:8px 10px;text-align:center">${i.quantity}</td>
+        <td style="padding:8px 10px;text-align:right">${Fmt.cur(i.unit_price)}</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:600;color:var(--accent)">${Fmt.cur(i.total_price||i.unit_price*i.quantity)}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div style="text-align:right;font-size:.85rem">
+      <div style="color:var(--t2)">Subtotal: ${Fmt.cur(s.subtotal)}</div>
+      ${+s.discount>0?`<div style="color:var(--danger)">Discount: -${Fmt.cur(s.discount)}</div>`:''}
+      ${+s.tax>0?`<div style="color:var(--t2)">Tax: +${Fmt.cur(s.tax)}</div>`:''}
+      <div class="f7" style="font-size:1rem;margin-top:6px;color:var(--accent)">Total: ${Fmt.cur(s.total_amount)}</div>
+    </div>`;
+  Modal.open('sale-modal');
+}
+
+function deleteSale(id, inv) {
+  confirmDel(`Delete invoice "${inv}"? This cannot be undone.`, async()=>{
+    try { await API.del(`/api/sales/${id}`); Toast.success('Deleted','Sale record removed.'); loadReports(); }
+    catch(err){ Toast.error('Failed',err.message); }
+  });
+}
+
+function exportCSV() {
+  const rows=[['Invoice','Customer','Items','Payment','Date','Total']];
+  filteredSales.forEach(s=>rows.push([s.invoice_number,s.customer_name||'Walk-in',s.sale_items?.length||0,s.payment_method,Fmt.dt(s.created_at),s.total_amount]));
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`sales-export-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+  Toast.success('Exported!','Sales data downloaded as CSV.');
+}
+
+function getDemoSales(){
+  const methods=['cash','card','upi'];
+  return Array.from({length:20},(_,i)=>({
+    id:String(i+1), invoice_number:`INV-2025040${i+1}-AB${i+1}C`,
+    customer_name:['Priya S.','Rahul K.','Walk-in','Anita M.','Suresh G.'][i%5],
+    payment_method:methods[i%3], total_amount:Math.floor(200+Math.random()*2000),
+    subtotal:Math.floor(200+Math.random()*2000), discount:0, tax:0,
+    created_at:new Date(Date.now()-i*86400000*0.8).toISOString(),
+    sale_items:[{product_name:'Basmati Rice 5kg',quantity:2,unit_price:299,total_price:598},{product_name:'Tata Salt 1kg',quantity:1,unit_price:25,total_price:25}]
+  }));
+}
+</script>
+</body></html>

@@ -51,7 +51,6 @@ retail-store/
 │       └── chatbot.py      # /api/chatbot
 │
 ├── supabase_schema.sql     # Complete DB schema + sample data
-└── vercel.json             # Vercel frontend deployment
 ```
 
 ---
@@ -105,32 +104,6 @@ const CONFIG = {
 
 ---
 
-## 🚀 Free Deployment
-
-### Backend → Render.com (Free Tier)
-
-1. Push `backend/` folder to a GitHub repo
-2. Go to [render.com](https://render.com) → **New Web Service**
-3. Connect your GitHub repo
-4. Set build command: `pip install -r requirements.txt`
-5. Set start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
-6. Add Environment Variables:
-   ```
-   SUPABASE_URL=https://xxxx.supabase.co
-   SUPABASE_SERVICE_KEY=your-service-key
-   ANTHROPIC_API_KEY=your-key
-   CORS_ORIGINS=https://your-frontend.vercel.app
-   ```
-7. Deploy → copy the URL (e.g. `https://retailos-backend.onrender.com`)
-
-### Frontend → Vercel (Free Tier)
-
-1. Push entire project to GitHub
-2. Go to [vercel.com](https://vercel.com) → **Import Project**
-3. Set root directory to `frontend/`
-4. Deploy → copy the URL
-5. Update `app.js` `API_BASE` to your Render backend URL
-6. Update Render `CORS_ORIGINS` to your Vercel URL
 
 ### Database → Supabase (Free Tier — 500MB)
 Already set up in Step 1. ✅
@@ -215,6 +188,4 @@ Interactive Swagger docs at `/docs` when backend is running.
 - All data operations go through the FastAPI backend (service key server-side only)
 - Enable Supabase RLS policies before going to production
 
----
 
-*Built with ❤️ using FastAPI, Supabase, and Claude AI*
